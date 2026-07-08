@@ -119,6 +119,19 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, service: 'Ghost Client API v2' });
     }
 
+    // ── GET /api/launcher/version ──────────────────────────────
+    // Лаунчер проверяет эту точку при запуске — если версия новее, предлагает обновление
+    if (req.method === 'GET' && path === '/api/launcher/version') {
+        return json(res, 200, { version: 'v1.0.0', download_url: 'https://ghost-client-api.onrender.com/api/launcher/download-exe' });
+    }
+
+    // ── GET /api/launcher/download-exe ────────────────────────
+    // Редирект на актуальный .exe лаунчера (загрузи на GitHub Releases или другой хостинг)
+    if (req.method === 'GET' && path === '/api/launcher/download-exe') {
+        res.writeHead(302, { Location: 'https://github.com/Niomero/ghost-client-api/releases/latest/download/GhostClient.exe' });
+        return res.end();
+    }
+
     // ── POST /api/register ─────────────────────────────────────
     if (req.method === 'POST' && path === '/api/register') {
         let body;
@@ -194,6 +207,28 @@ const server = http.createServer(async (req, res) => {
             const premiumActive = u.premium && (!u.premium_until || new Date(u.premium_until) > new Date());
             return json(res, 200, { success: true, user: { ...u, premium: premiumActive } });
         } catch (e) {
+            return json(res, 500, { success: false, error: 'Ошибка сервера' });
+        }
+    }
+
+    // ── POST /api/avatar ──────────────────────────────────────
+    // Сохранить аватар пользователя (base64 dataURL)
+    if (req.method === 'POST' && path === '/api/avatar') {
+        const token = getToken(req);
+        const userId = getSessionUser(token);
+        if (!userId) return json(res, 401, { success: false, error: 'Не авторизован' });
+        let body;
+        try { body = await parseBody(req); } catch { return json(res, 400, { success: false, error: 'Неверный формат' }); }
+        const { avatar } = body;
+        if (!avatar || !avatar.startsWith('data:image/')) return json(res, 400, { success: false, error: 'Неверный формат аватара' });
+        if (avatar.length > 500000) return json(res, 413, { success: false, error: 'Аватар слишком большой (макс 500KB)' });
+        try {
+            // Добавляем колонку если нет
+            await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT`);
+            await pool.query('UPDATE users SET avatar = $1 WHERE id = $2', [avatar, userId]);
+            return json(res, 200, { success: true });
+        } catch (e) {
+            console.error('[avatar]', e.message);
             return json(res, 500, { success: false, error: 'Ошибка сервера' });
         }
     }
