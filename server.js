@@ -122,13 +122,13 @@ const server = http.createServer(async (req, res) => {
     // ── GET /api/launcher/version ──────────────────────────────
     // Лаунчер проверяет эту точку при запуске — если версия новее, предлагает обновление
     if (req.method === 'GET' && path === '/api/launcher/version') {
-        return json(res, 200, { version: 'v1.1.0', download_url: 'https://ghost-client-api.onrender.com/api/launcher/download-exe' });
+        return json(res, 200, { version: 'v1.0.0', download_url: 'https://ghost-client-api.onrender.com/api/launcher/download-exe' });
     }
 
     // ── GET /api/launcher/download-exe ────────────────────────
     // Редирект на актуальный .exe лаунчера (загрузи на GitHub Releases или другой хостинг)
     if (req.method === 'GET' && path === '/api/launcher/download-exe') {
-        res.writeHead(302, { Location: 'https://github.com/Niomero/ghost-client-api/releases/download/Launcher/Ghost.exe' });
+        res.writeHead(302, { Location: 'https://github.com/Niomero/ghost-client-api/releases/latest/download/GhostClient.exe' });
         return res.end();
     }
 
@@ -253,6 +253,124 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { success: true });
     }
 
+    // ── POST /api/change-password ──────────────────────────────
+    if (req.method === 'POST' && path === '/api/change-password') {
+        const token = getToken(req);
+        const userId = getSessionUser(token);
+        if (!userId) return json(res, 401, { success: false, error: 'Не авторизован' });
+        let body;
+        try { body = await parseBody(req); } catch { return json(res, 400, { success: false, error: 'Неверный формат' }); }
+        const { old_password, new_password } = body;
+        if (!old_password || !new_password) return json(res, 400, { success: false, error: 'Заполните все поля' });
+        if (new_password.length < 6) return json(res, 400, { success: false, error: 'Пароль минимум 6 символов' });
+        try {
+            const r = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+            if (!r.rows.length) return json(res, 404, { success: false, error: 'Пользователь не найден' });
+            if (r.rows[0].password_hash !== sha256(old_password)) {
+                return json(res, 403, { success: false, error: 'Неверный текущий пароль' });
+            }
+            await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [sha256(new_password), userId]);
+            return json(res, 200, { success: true, message: 'Пароль успешно изменён' });
+        } catch (e) {
+            console.error('[change-password]', e.message);
+            return json(res, 500, { success: false, error: 'Ошибка сервера' });
+        }
+    }
+
+    // ── GET /api/profile ───────────────────────────────────────
+    // Алиас /api/me для совместимости с сайтом
+    if (req.method === 'GET' && path === '/api/profile') {
+        const token = getToken(req);
+        const userId = getSessionUser(token);
+        if (!userId) return json(res, 401, { success: false, error: 'Не авторизован' });
+        try {
+            const r = await pool.query(
+                'SELECT id, login, email, role, premium, premium_until, hwid, created_at FROM users WHERE id = $1',
+                [userId]
+            );
+            if (!r.rows.length) return json(res, 404, { success: false, error: 'Пользователь не найден' });
+            const u = r.rows[0];
+            const premiumActive = u.premium && (!u.premium_until || new Date(u.premium_until) > new Date());
+            return json(res, 200, { success: true, user: { ...u, premium: premiumActive } });
+        } catch (e) {
+            return json(res, 500, { success: false, error: 'Ошибка сервера' });
+        }
+    }
+
+    // ── POST /api/admin/reset-hwid ─────────────────────────────
+    // Сброс HWID конкретного пользователя (только для OWNER/ADMIN)
+    if (req.method === 'POST' && path === '/api/admin/reset-hwid') {
+        const token = getToken(req);
+        const userId = getSessionUser(token);
+        if (!userId) return json(res, 401, { success: false, error: 'Не авторизован' });
+        const adminCheck = await pool.query('SELECT role FROM users WHERE id = $1', [userId]);
+        if (!adminCheck.rows.length || !['OWNER','ADMIN'].includes(adminCheck.rows[0].role)) {
+            return json(res, 403, { success: false, error: 'Нет прав' });
+        }
+        let body;
+        try { body = await parseBody(req); } catch { return json(res, 400, { success: false, error: 'Неверный формат' }); }
+        const { target_login } = body;
+        if (!target_login) return json(res, 400, { success: false, error: 'Укажите target_login' });
+        try {
+            const r = await pool.query('UPDATE users SET hwid = NULL WHERE login = $1 RETURNING login', [target_login]);
+            if (!r.rows.length) return json(res, 404, { success: false, error: 'Пользователь не найден' });
+            return json(res, 200, { success: true, message: `HWID сброшен для ${target_login}` });
+        } catch (e) {
+            return json(res, 500, { success: false, error: 'Ошибка сервера' });
+        }
+    }
+
+    // ── POST /api/admin/set-premium ────────────────────────────
+    if (req.method === 'POST' && path === '/api/admin/set-premium') {
+        const token = getToken(req);
+        const userId = getSessionUser(token);
+        if (!userId) return json(res, 401, { success: false, error: 'Не авторизован' });
+        const adminCheck = await pool.query('SELECT role FROM users WHERE id = $1', [userId]);
+        if (!adminCheck.rows.length || !['OWNER','ADMIN'].includes(adminCheck.rows[0].role)) {
+            return json(res, 403, { success: false, error: 'Нет прав' });
+        }
+        let body;
+        try { body = await parseBody(req); } catch { return json(res, 400, { success: false, error: 'Неверный формат' }); }
+        const { target_login, days } = body;
+        if (!target_login || !days) return json(res, 400, { success: false, error: 'Укажите target_login и days' });
+        const premiumUntil = new Date(Date.now() + Number(days) * 86400 * 1000).toISOString();
+        try {
+            const r = await pool.query(
+                'UPDATE users SET premium = TRUE, premium_until = $1 WHERE login = $2 RETURNING login',
+                [premiumUntil, target_login]
+            );
+            if (!r.rows.length) return json(res, 404, { success: false, error: 'Пользователь не найден' });
+            return json(res, 200, { success: true, premium_until: premiumUntil });
+        } catch (e) {
+            return json(res, 500, { success: false, error: 'Ошибка сервера' });
+        }
+    }
+
+    // ── POST /api/admin/ban ────────────────────────────────────
+    if (req.method === 'POST' && path === '/api/admin/ban') {
+        const token = getToken(req);
+        const userId = getSessionUser(token);
+        if (!userId) return json(res, 401, { success: false, error: 'Не авторизован' });
+        const adminCheck = await pool.query('SELECT role FROM users WHERE id = $1', [userId]);
+        if (!adminCheck.rows.length || !['OWNER','ADMIN'].includes(adminCheck.rows[0].role)) {
+            return json(res, 403, { success: false, error: 'Нет прав' });
+        }
+        let body;
+        try { body = await parseBody(req); } catch { return json(res, 400, { success: false, error: 'Неверный формат' }); }
+        const { target_login, reason, unban } = body;
+        if (!target_login) return json(res, 400, { success: false, error: 'Укажите target_login' });
+        try {
+            if (unban) {
+                await pool.query('UPDATE users SET banned = FALSE, ban_reason = NULL WHERE login = $1', [target_login]);
+                return json(res, 200, { success: true, message: `${target_login} разбанен` });
+            }
+            await pool.query('UPDATE users SET banned = TRUE, ban_reason = $1 WHERE login = $2', [reason || 'Нарушение правил', target_login]);
+            return json(res, 200, { success: true, message: `${target_login} заблокирован` });
+        } catch (e) {
+            return json(res, 500, { success: false, error: 'Ошибка сервера' });
+        }
+    }
+
     // ── GET /api/launcher/download ─────────────────────────────
     if (req.method === 'GET' && path === '/api/launcher/download') {
         const token = getToken(req) || parsed.query.token;
@@ -261,7 +379,7 @@ const server = http.createServer(async (req, res) => {
         const r = await pool.query('SELECT premium FROM users WHERE id = $1', [userId]);
         if (!r.rows.length || !r.rows[0].premium) return json(res, 403, { success: false, error: 'Требуется Premium' });
         // Redirect to actual launcher download (подставьте реальную ссылку)
-        res.writeHead(302, { Location: 'https://github.com/Niomero/ghost-client-api/releases/download/Launcher/Ghost.exe' });
+        res.writeHead(302, { Location: 'https://github.com/ghost-client/launcher/releases/latest/download/GhostClient.exe' });
         return res.end();
     }
 
