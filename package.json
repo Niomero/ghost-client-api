@@ -1,0 +1,12 @@
+{
+  "name": "ghost-client-api",
+  "version": "1.0.0",
+  "description": "Ghost Client Launcher API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "pg": "^8.12.0"
+  }
+}

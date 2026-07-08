@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ghost-client-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/ping
+    envVars:
+      - key: DATABASE_URL
+        value: postgresql://niomero:MOXUCpO1XEu0gX3eb9jRn2rBrTwSwv0g@dpg-d9794s6q1p3s738kbbqg-a.oregon-postgres.render.com/ghost_db_vh94
+      - key: NODE_ENV
+        value: production
