@@ -12,21 +12,28 @@ const pool = new Pool({
 async function initDB() {
     const client = await pool.connect();
     try {
+        // Создаём таблицу если нет
         await client.query(`
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 login VARCHAR(64) UNIQUE NOT NULL,
-                email VARCHAR(128) UNIQUE,
                 password_hash VARCHAR(128) NOT NULL,
                 role VARCHAR(32) NOT NULL DEFAULT 'USER',
                 premium BOOLEAN NOT NULL DEFAULT FALSE,
-                premium_until TIMESTAMP,
                 hwid VARCHAR(256),
                 created_at TIMESTAMP DEFAULT NOW(),
                 banned BOOLEAN NOT NULL DEFAULT FALSE,
                 ban_reason VARCHAR(256)
             )
         `);
+        // Миграции: добавляем колонки если их нет
+        const migrations = [
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(128)`,
+            `ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMP`,
+        ];
+        for (const sql of migrations) {
+            await client.query(sql);
+        }
         // Первый пользователь Ghost
         const hash = sha256('ghosty');
         await client.query(`
