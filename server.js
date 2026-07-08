@@ -122,13 +122,13 @@ const server = http.createServer(async (req, res) => {
     // ── GET /api/launcher/version ──────────────────────────────
     // Лаунчер проверяет эту точку при запуске — если версия новее, предлагает обновление
     if (req.method === 'GET' && path === '/api/launcher/version') {
-        return json(res, 200, { version: 'v1.0.0', download_url: 'https://ghost-client-api.onrender.com/api/launcher/download-exe' });
+        return json(res, 200, { version: 'v1.1.0', download_url: 'https://ghost-client-api.onrender.com/api/launcher/download-exe' });
     }
 
     // ── GET /api/launcher/download-exe ────────────────────────
     // Редирект на актуальный .exe лаунчера (загрузи на GitHub Releases или другой хостинг)
     if (req.method === 'GET' && path === '/api/launcher/download-exe') {
-        res.writeHead(302, { Location: 'https://github.com/Niomero/ghost-client-api/releases/latest/download/GhostClient.exe' });
+        res.writeHead(302, { Location: 'https://github.com/Niomero/ghost-client-api/releases/download/Launcher/Ghost.exe' });
         return res.end();
     }
 
