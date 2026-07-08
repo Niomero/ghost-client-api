@@ -261,7 +261,7 @@ const server = http.createServer(async (req, res) => {
         const r = await pool.query('SELECT premium FROM users WHERE id = $1', [userId]);
         if (!r.rows.length || !r.rows[0].premium) return json(res, 403, { success: false, error: 'Требуется Premium' });
         // Redirect to actual launcher download (подставьте реальную ссылку)
-        res.writeHead(302, { Location: 'https://github.com/ghost-client/launcher/releases/latest/download/GhostClient.exe' });
+        res.writeHead(302, { Location: 'https://github.com/Niomero/ghost-client-api/releases/download/Launcher/Ghost.exe' });
         return res.end();
     }
 
