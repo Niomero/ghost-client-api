@@ -326,9 +326,6 @@ const server = http.createServer(async (req, res) => {
         const userId = getSessionUser(token);
         if (!userId) return json(res, 401, { success: false, error: 'Не авторизован' });
         const adminCheck = await pool.query('SELECT role FROM users WHERE id = $1', [userId]);
-        if (!adminCheck.rows.length || !['OWNER','ADMIN'].includes(adminCheck.rows[0].role)) {
-            return json(res, 403, { success: false, error: 'Нет прав' });
-        }
         let body;
         try { body = await parseBody(req); } catch { return json(res, 400, { success: false, error: 'Неверный формат' }); }
         const { target_login, days } = body;
