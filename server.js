@@ -307,7 +307,6 @@ if (req.method === 'POST' && path === '/api/admin/set-role') {
         try { body = await parseBody(req); } catch { return json(res, 400, { success: false, error: 'Неверный формат' }); }
         const { old_password, new_password } = body;
         if (!old_password || !new_password) return json(res, 400, { success: false, error: 'Заполните все поля' });
-        if (new_password.length < 6) return json(res, 400, { success: false, error: 'Пароль минимум 6 символов' });
         try {
             const r = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
             if (!r.rows.length) return json(res, 404, { success: false, error: 'Пользователь не найден' });
