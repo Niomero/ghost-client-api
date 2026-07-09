@@ -253,23 +253,22 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { success: true });
     }
 
-    // ── POST /api/admin/set-role ────────────────────────────────
-// Только OWNER может назначать/снимать роли
+ // ── POST /api/admin/set-role ────────────────────────────────
 if (req.method === 'POST' && path === '/api/admin/set-role') {
     const token = getToken(req);
     const userId = getSessionUser(token);
     if (!userId) return json(res, 401, { success: false, error: 'Не авторизован' });
 
-    // Только OWNER может менять роли
-    const adminCheck = await pool.query('SELECT role FROM users WHERE id = $1', [userId]);
-
+    // ПРОВЕРКА ПРАВ АДМИНИСТРАТОРА
+    const adminCheck = await pool.query('SELECT role, login FROM users WHERE id = $1', [userId]);
+    if (!adminCheck.rows.length || adminCheck.rows[0].role !== 'OWNER') {
+        return json(res, 403, { success: false, error: 'Нет прав (требуется OWNER)' });
+    }
 
     let body;
     try { body = await parseBody(req); } catch { return json(res, 400, { success: false, error: 'Неверный формат' }); }
 
     const { target_login, role } = body;
-
-    // Допустимые роли
     const allowedRoles = ['USER', 'ADMIN', 'OWNER'];
 
     if (!target_login) return json(res, 400, { success: false, error: 'Укажите target_login' });
@@ -278,8 +277,10 @@ if (req.method === 'POST' && path === '/api/admin/set-role') {
         return json(res, 400, { success: false, error: `Недопустимая роль. Допустимые: ${allowedRoles.join(', ')}` });
     }
 
-    // Нельзя менять роль самому себе
-    const selfCheck = await pool.query('SELECT login FROM users WHERE id = $1', [userId]);
+    // НЕЛЬЗЯ МЕНЯТЬ РОЛЬ САМОМУ СЕБЕ
+    if (adminCheck.rows[0].login === target_login) {
+        return json(res, 400, { success: false, error: 'Нельзя менять роль самому себе' });
+    }
 
     try {
         const r = await pool.query(
