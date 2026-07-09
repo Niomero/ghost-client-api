@@ -253,6 +253,53 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { success: true });
     }
 
+    // ── POST /api/admin/set-role ────────────────────────────────
+// Только OWNER может назначать/снимать роли
+if (req.method === 'POST' && path === '/api/admin/set-role') {
+    const token = getToken(req);
+    const userId = getSessionUser(token);
+    if (!userId) return json(res, 401, { success: false, error: 'Не авторизован' });
+
+    // Только OWNER может менять роли
+    const adminCheck = await pool.query('SELECT role FROM users WHERE id = $1', [userId]);
+
+
+    let body;
+    try { body = await parseBody(req); } catch { return json(res, 400, { success: false, error: 'Неверный формат' }); }
+
+    const { target_login, role } = body;
+
+    // Допустимые роли
+    const allowedRoles = ['USER', 'ADMIN', 'OWNER'];
+
+    if (!target_login) return json(res, 400, { success: false, error: 'Укажите target_login' });
+    if (!role) return json(res, 400, { success: false, error: 'Укажите role' });
+    if (!allowedRoles.includes(role.toUpperCase())) {
+        return json(res, 400, { success: false, error: `Недопустимая роль. Допустимые: ${allowedRoles.join(', ')}` });
+    }
+
+    // Нельзя менять роль самому себе
+    const selfCheck = await pool.query('SELECT login FROM users WHERE id = $1', [userId]);
+    if (selfCheck.rows[0].login.toLowerCase() === target_login.toLowerCase()) {
+        return json(res, 400, { success: false, error: 'Нельзя менять роль самому себе' });
+    }
+
+    try {
+        const r = await pool.query(
+            'UPDATE users SET role = $1 WHERE login = $2 RETURNING login, role',
+            [role.toUpperCase(), target_login]
+        );
+        if (!r.rows.length) return json(res, 404, { success: false, error: 'Пользователь не найден' });
+        return json(res, 200, {
+            success: true,
+            message: `Роль пользователя ${r.rows[0].login} изменена на ${r.rows[0].role}`
+        });
+    } catch (e) {
+        console.error('[set-role]', e.message);
+        return json(res, 500, { success: false, error: 'Ошибка сервера' });
+    }
+}
+    
     // ── POST /api/change-password ──────────────────────────────
     if (req.method === 'POST' && path === '/api/change-password') {
         const token = getToken(req);
