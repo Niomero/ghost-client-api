@@ -122,7 +122,7 @@ const server = http.createServer(async (req, res) => {
     // ── GET /api/launcher/version ──────────────────────────────
     // Лаунчер проверяет эту точку при запуске — если версия новее, предлагает обновление
     if (req.method === 'GET' && path === '/api/launcher/version') {
-        return json(res, 200, { version: 'v2.0.0', download_url: 'https://github.com/Niomero/ghost-client-api/releases/download/Launcher/Ghost.exe' });
+        return json(res, 200, { version: 'v3.0.0', download_url: 'https://github.com/Niomero/ghost-client-api/releases/download/Launcher/Ghost.exe' });
     }
 
     // ── GET /api/launcher/download-exe ────────────────────────
