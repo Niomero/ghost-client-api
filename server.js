@@ -280,9 +280,6 @@ if (req.method === 'POST' && path === '/api/admin/set-role') {
 
     // Нельзя менять роль самому себе
     const selfCheck = await pool.query('SELECT login FROM users WHERE id = $1', [userId]);
-    if (selfCheck.rows[0].login.toLowerCase() === target_login.toLowerCase()) {
-        return json(res, 400, { success: false, error: 'Нельзя менять роль самому себе' });
-    }
 
     try {
         const r = await pool.query(
